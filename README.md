@@ -7,64 +7,51 @@ and runs the bot as a systemd service (starts on boot, restarts on failure).
 
 Stays at $0/month as long as you keep the free-tier guardrails below.
 
-## Prerequisites
+**Deploys run automatically from GitHub**: pushing to `main` plans and
+applies via GitHub Actions. No service-account keys anywhere — auth uses
+Workload Identity Federation.
 
-1. A GCP project with **billing enabled** (card on file; stays $0 inside limits).
-2. [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5.
-3. [gcloud CLI](https://cloud.google.com/sdk/docs/install), authenticated:
+## One-time setup
+
+1. Install the [gcloud CLI](https://cloud.google.com/sdk/docs/install) and log in:
    ```bash
-   gcloud auth application-default login
-   gcloud config set project YOUR_PROJECT_ID
+   gcloud auth login
    ```
+2. Run the setup script (creates the service account, Workload Identity
+   Pool, IAM bindings, and the Terraform state bucket):
+   ```bash
+   PROJECT_ID=your-gcp-project-id ./scripts/setup-wif.sh
+   ```
+3. Add the printed values as repo secrets
+   (repo → **Settings → Secrets and variables → Actions**):
+   - `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `GCP_SERVICE_ACCOUNT` (required)
+   - `OPTIONOMICS_API_KEY`, `OPTIONOMICS_EMAIL`, `WEBULL_APP_KEY`,
+     `WEBULL_APP_SECRET`, `IOS_API_KEY` (optional; empty disables the feature)
 
-## Terraform Cloud
+That's it. Push to `main` and watch the **Actions** tab.
 
-The config uses HCP Terraform (organization `ops-trade-idea`, workspace
-`ops-trade-idea-gcp`) for remote state and runs. On your Mac:
+## How it works
+
+- `.github/workflows/terraform.yml`: on every push to `main`, authenticates
+  to GCP via WIF (`google-github-actions/auth`), runs `terraform init`,
+  `plan`, then `apply`. Pull requests only run `plan`.
+- `main.tf`: provider, `e2-micro` VM, firewall rule for port 8000.
+  State lives in the `ops-trade-idea-tfstate` GCS bucket (created by the
+  setup script).
+- `variables.tf`: all bot settings; secrets marked `sensitive` and fed from
+  `TF_VAR_*` env vars in the workflow (which read GitHub Secrets).
+- `startup.sh.tftpl`: first-boot script — installs uv, clones the bot repo,
+  writes `.env`, enables the systemd service.
+- `outputs.tf`: public IP, dashboard URL, SSH command.
+
+## Local runs
 
 ```bash
-terraform login   # once; opens a browser to approve the token
-```
-
-Then set variables in the workspace UI (**Variables** tab), marking secrets
-sensitive:
-
-- `project_id`, plus every secret from `terraform.tfvars.example`
-  (`optionomics_api_key`, `webull_app_key`, `webull_app_secret`, `ios_api_key`, …)
-- `GOOGLE_CREDENTIALS` — contents of a GCP service-account key JSON, so
-  remote runs can authenticate to your project
-
-After that, `terraform plan` / `terraform apply` run remotely from the
-workspace.
-
-Tip: switch the workspace to **Local** execution mode (Settings → General)
-if you'd rather keep secrets in a local `terraform.tfvars` and run applies
-from your Mac — Terraform Cloud then only stores state. To go fully local,
-remove the `cloud {}` block from `main.tf` and re-run `terraform init`.
-
-## Deploy
-
-```bash
-cp terraform.tfvars.example terraform.tfvars
-# edit terraform.tfvars: set project_id and your secrets
+cp terraform.tfvars.example terraform.tfvars   # fill in project_id + secrets
+gcloud auth application-default login
 terraform init
 terraform plan
 terraform apply
-```
-
-Secrets can also be passed as env vars instead of `terraform.tfvars`:
-
-```bash
-TF_VAR_ios_api_key="..." TF_VAR_webull_app_key="..." terraform apply
-```
-
-After apply, Terraform prints the dashboard URL (`http://<ip>:8000`) and an
-SSH command. The startup script takes a few minutes on first boot; check
-progress with:
-
-```bash
-gcloud compute ssh ops-paper-trade --zone us-central1-a --project YOUR_PROJECT_ID
-sudo journalctl -u ops-paper-trade -f
 ```
 
 ## Free-tier guardrails (stay at $0)
@@ -80,16 +67,7 @@ sudo journalctl -u ops-paper-trade -f
 ## Notes
 
 - `DRY_RUN` defaults to `true`. The bot only submits paper orders.
-- Terraform state (`terraform.tfstate`) contains your secrets in plaintext —
-  keep it local and never commit it (already gitignored).
 - `terraform.tfvars` is gitignored. Only `terraform.tfvars.example` (no
   secrets) is committed.
-- To tear down: `terraform destroy`.
-
-## Files
-
-- `main.tf` — provider, VM, firewall rule for port 8000.
-- `variables.tf` — all bot settings; secrets marked `sensitive`.
-- `startup.sh.tftpl` — first-boot script: installs uv, clones the repo,
-  writes `.env`, enables the systemd service.
-- `outputs.tf` — public IP, dashboard URL, SSH command.
+- To tear down: run the workflow with `terraform destroy` — or from your
+  Mac after `terraform init`: `terraform destroy`.
