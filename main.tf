@@ -7,9 +7,11 @@ terraform {
     }
   }
 
-  backend "gcs" {
-    bucket = "ops-trade-idea-tfstate"
-    prefix = "terraform/state"
+  cloud {
+    organization = "ops-trade-idea"
+    workspaces {
+      name = "ops-trade-idea-gcp"
+    }
   }
 }
 
