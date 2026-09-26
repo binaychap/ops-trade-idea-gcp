@@ -18,13 +18,13 @@ variable "zone" {
 variable "instance_name" {
   description = "Compute Engine instance name."
   type        = string
-  default     = "ops-paper-trade"
+  default     = "ops-trade-idea"
 }
 
 variable "repo_url" {
   description = "Git URL of the bot repository cloned by the startup script."
   type        = string
-  default     = "https://github.com/binaychap/ops-paper-trade.git"
+  default     = "https://github.com/binaychap/ops-trade-idea.git"
 }
 
 # --- Bot settings (defaults mirror .env.example; DRY_RUN stays true) ---
