@@ -209,6 +209,7 @@ terraform output -raw ssh_command
 
 Open the dashboard URL in your browser. Copy and run the SSH command Terraform
 prints. The command for the earlier deployment was:
+connect to google cloud console
 
 ```bash
 gcloud compute ssh ops-trade-idea \
@@ -281,7 +282,44 @@ To stop the entire VM, use **Google Cloud Console → Compute Engine → VM inst
 → select VM → Stop**. Starting the VM again runs its startup script, which starts
 the bot. Stopping a VM does not delete its disks or other infrastructure.
 
-## 7. Remove the infrastructure
+## 7. Update the application after a GitHub push
+
+If you only changed application code, you do not need to run Terraform again.
+GitHub pushes do not automatically update the running app; the startup script
+only clones the repository when the checkout is missing.
+
+On your Mac, get the deployed VM's SSH command, then copy and run it:
+
+```bash
+terraform output -raw ssh_command
+```
+
+Inside the VM's SSH session, pull the latest code, install dependencies, and
+restart the application:
+
+```bash
+cd /opt/ops-paper-trade &&
+sudo git pull --ff-only &&
+sudo /root/.local/bin/uv sync &&
+sudo systemctl restart ops-paper-trade
+```
+
+This updates the branch currently checked out on the VM. If any command fails,
+resolve the error before continuing; the remaining commands will not run.
+
+Check the service status and recent logs:
+
+```bash
+sudo systemctl status ops-paper-trade --no-pager
+sudo journalctl -u ops-paper-trade -n 100 --no-pager
+```
+
+If you changed infrastructure or Terraform-managed settings, such as `.tf`
+files, Terraform input values, or `startup.sh.tftpl`, run `terraform plan` on
+your Mac and review the changes before running `terraform apply`. Applying
+Terraform alone does not pull application updates into an existing checkout.
+
+## 8. Remove the infrastructure
 
 Only when you intend to delete the resources managed by this Terraform workspace:
 
